@@ -13,3 +13,7 @@ output "insights_table_name" {
 output "lambda_role_arn" {
   value = module.iam.lambda_role_arn
 }
+
+output "shorten_api_url" {
+  value = module.apigw.shorten_url
+}
