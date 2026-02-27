@@ -21,3 +21,11 @@ output "clicks_table_arn" {
 output "insights_table_arn" {
   value = aws_dynamodb_table.insights.arn
 }
+
+output "ai_table_name" {
+  value = aws_dynamodb_table.ai.name
+}
+
+output "ai_table_arn" {
+  value = aws_dynamodb_table.ai.arn
+}

@@ -49,3 +49,24 @@ variable "acm_certificate_domain" {
   description = "Domain name to lookup ACM certificate (must be ISSUED in same region)."
   default     = ""
 }
+
+#stats lambda용
+variable "stats_lambda_invoke_arn" {
+  type    = string
+  default = ""
+}
+
+variable "stats_lambda_function_name" {
+  type    = string
+  default = ""
+}
+
+# /ai/latest 호출
+variable "analyze_lambda_invoke_arn" {
+  type = string
+}
+
+variable "analyze_lambda_function_name" {
+  type = string
+}
+

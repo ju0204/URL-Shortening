@@ -20,3 +20,12 @@ output "execute_api_base_url" {
   value       = aws_apigatewayv2_stage.this.invoke_url
   description = "Default execute-api base URL (stage invoke url)."
 }
+
+output "base_url" {
+  value       = var.custom_domain_name != "" ? "https://${var.custom_domain_name}" : aws_apigatewayv2_stage.this.invoke_url
+  description = "Base URL (custom domain if configured, otherwise stage invoke url)."
+}
+
+output "api_id" {
+  value = aws_apigatewayv2_api.this.id
+}

@@ -13,3 +13,15 @@ variable "base_url" {
   description = "Short URL base, e.g. https://short.example.com"
   default     = ""
 }
+
+variable "slack_webhook_url" {
+  description = "Slack Incoming Webhook URL for ops alerts"
+  type        = string
+  sensitive   = true
+}
+
+variable "slack_webhook_url_ai_summary" {
+  description = "Slack Incoming Webhook URL for AI summary alert channel"
+  type        = string
+  sensitive   = true
+}

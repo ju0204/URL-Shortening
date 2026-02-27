@@ -14,6 +14,10 @@ resource "aws_dynamodb_table" "urls" {
     enabled        = true
   }
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = {
     Project = var.project_name
     Name    = "${var.project_name}-urls"
@@ -34,6 +38,10 @@ resource "aws_dynamodb_table" "clicks" {
   attribute {
     name = "timestamp"
     type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 
   tags = {
@@ -58,8 +66,39 @@ resource "aws_dynamodb_table" "insights" {
     type = "S"
   }
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = {
     Project = var.project_name
     Name    = "${var.project_name}-insights"
+  }
+}
+
+#ai 테이블 추가 
+resource "aws_dynamodb_table" "ai" {
+  name         = "${var.project_name}-ai"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "periodKey"
+  range_key    = "aiGeneratedAt"
+
+  attribute {
+    name = "periodKey"
+    type = "S"
+  }
+
+  attribute {
+    name = "aiGeneratedAt"
+    type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  tags = {
+    Project = var.project_name
+    Name    = "${var.project_name}-ai"
   }
 }

@@ -1,8 +1,10 @@
 import json
 import os
 import hashlib
+import time
 from datetime import datetime, timezone
 from decimal import Decimal
+
 
 import boto3
 
@@ -22,21 +24,83 @@ def lambda_handler(event, context):
     - urls 테이블 clickCount 증가
     - 301/302 Redirect
     """
+    start = time.time()
+
+    method, route, path = extract_http_info(event)
+
+    headers = event.get("headers") or {}
+    user_agent = get_header(headers, "user-agent")
+    referer = get_header(headers, "referer") or "direct"
+
+    request_context = event.get("requestContext", {}) or {}
+    source_ip = (
+        ((request_context.get("http") or {}).get("sourceIp"))
+        or ((request_context.get("identity") or {}).get("sourceIp"))
+        or ""
+    )
+    ip_hash = hash_ip(source_ip)
+
+    short_id = None  # 예외 발생해도 로그 찍기 위해 미리 선언
+
     try:
         short_id = extract_short_id(event)
         if not short_id:
+            latency_ms = int((time.time() - start) * 1000)
+            log_json(
+                "WARN",
+                "shortId missing",
+                requestId=context.aws_request_id,
+                shortId=short_id,
+                statusCode=400,
+                latencyMs=latency_ms,
+                referer=referer,
+                userAgent=user_agent,
+                ipHash=ip_hash,
+                route=route,
+                method=method,
+                path=path,
+            )
             return json_response(400, {"error": "Short ID is required"})
 
         # 1) 원본 URL 조회
         resp = urls_table.get_item(Key={"shortId": short_id})
         item = resp.get("Item")
         if not item:
+            latency_ms = int((time.time() - start) * 1000)
+            log_json(
+                "WARN",
+                "url not found",
+                requestId=context.aws_request_id,
+                shortId=short_id,
+                statusCode=404,
+                latencyMs=latency_ms,
+                referer=referer,
+                userAgent=user_agent,
+                ipHash=ip_hash,
+                route=route,
+                method=method,
+                path=path,
+            )
             return json_response(404, {"error": "URL not found"})
 
         original_url = item.get("originalUrl")
         if not original_url:
+            latency_ms = int((time.time() - start) * 1000)
+            log_json(
+                "ERROR",
+                "originalUrl missing",
+                requestId=context.aws_request_id,
+                shortId=short_id,
+                statusCode=500,
+                latencyMs=latency_ms,
+                referer=referer,
+                userAgent=user_agent,
+                ipHash=ip_hash,
+                route=route,
+                method=method,
+                path=path,
+            )
             return json_response(500, {"error": "Invalid data: originalUrl missing"})
-
         # 2) 클릭 로그 + 카운트 증가 (실패해도 리다이렉트는 되게)
         try:
             log_click(short_id, event)
@@ -56,6 +120,21 @@ def lambda_handler(event, context):
             print("Failed to update clickCount:", str(e))
 
         # 3) Redirect
+        latency_ms = int((time.time() - start) * 1000)
+        log_json(
+            "INFO",
+            "redirect handled",
+            requestId=context.aws_request_id,
+            shortId=short_id,
+            statusCode=REDIRECT_STATUS,
+            latencyMs=latency_ms,
+            referer=referer,
+            userAgent=user_agent,
+            ipHash=ip_hash,
+            route=route,
+            method=method,
+            path=path,
+        )
         return {
             "statusCode": REDIRECT_STATUS,
             "headers": {
@@ -68,9 +147,24 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        print("Unhandled error:", str(e))
+        latency_ms = int((time.time() - start) * 1000)
+        log_json(
+            "ERROR",
+            "redirect failed",
+            requestId=context.aws_request_id,
+            shortId=short_id,
+            statusCode=500,
+            latencyMs=latency_ms,
+            referer=referer,
+            userAgent=user_agent,
+            ipHash=ip_hash,
+            route=route,
+            method=method,
+            path=path,
+            errorType=type(e).__name__,
+            errorMessage=str(e),
+        )
         return json_response(500, {"error": "Internal server error"})
-
 
 # ---------------- helpers ----------------
 
@@ -128,3 +222,42 @@ def json_response(status_code: int, body: dict):
         },
         "body": json.dumps(body, ensure_ascii=False),
     }
+
+def log_json(level, message, **kwargs):
+    log_obj = {
+        "level": level,
+        "message": message,
+        **kwargs,
+    }
+    print(json.dumps(log_obj, ensure_ascii=False))
+
+
+def extract_http_info(event):
+    method = None
+    route = None
+    path = None
+
+    # API Gateway HTTP API (v2)
+    rc = event.get("requestContext", {}) or {}
+    http = rc.get("http", {}) or {}
+    if http:
+        method = http.get("method")
+        path = http.get("path")
+        route_key = event.get("routeKey")  # 예: "GET /{shortId}"
+        route = route_key if route_key and route_key != "$default" else path
+
+    # API Gateway REST API (v1) fallback
+    if method is None:
+        method = event.get("httpMethod")
+    if path is None:
+        path = event.get("path")
+    if route is None:
+        route = event.get("resource") or path
+
+    return method, route, path
+
+
+def get_header(headers, key):
+    if not headers:
+        return None
+    return headers.get(key) or headers.get(key.lower()) or headers.get(key.title())

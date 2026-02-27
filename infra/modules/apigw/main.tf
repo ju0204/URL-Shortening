@@ -130,3 +130,50 @@ resource "aws_route53_record" "apigw_aaaa" {
     evaluate_target_health = false
   }
 }
+
+# stats lambda용
+resource "aws_apigatewayv2_integration" "stats" {
+  api_id                 = aws_apigatewayv2_api.this.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = var.stats_lambda_invoke_arn
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "stats" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "GET /stats/{shortId}"
+  target    = "integrations/${aws_apigatewayv2_integration.stats.id}"
+}
+
+resource "aws_lambda_permission" "allow_apigw_invoke_stats" {
+  statement_id  = "AllowExecutionFromHttpApiStats"
+  action        = "lambda:InvokeFunction"
+  function_name = var.stats_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
+}
+
+# GET /ai/latest 추가
+# analyze lambda용 (AI 최신 결과 조회)
+resource "aws_apigatewayv2_integration" "ai_latest" {
+  api_id                 = aws_apigatewayv2_api.this.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = var.analyze_lambda_invoke_arn
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "ai_latest" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "GET /ai/latest"
+  target    = "integrations/${aws_apigatewayv2_integration.ai_latest.id}"
+}
+
+resource "aws_lambda_permission" "allow_apigw_invoke_ai_latest" {
+  statement_id  = "AllowExecutionFromHttpApiAiLatest"
+  action        = "lambda:InvokeFunction"
+  function_name = var.analyze_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
+}

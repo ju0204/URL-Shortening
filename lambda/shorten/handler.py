@@ -27,6 +27,13 @@ BASE62_ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9 (62 chars)
 
 
 def lambda_handler(event, context):
+    start = time.time()
+
+    method, route, path = extract_http_info(event)
+    headers = event.get("headers") or {}
+    user_agent = get_header(headers, "user-agent")
+
+    request_id = getattr(context, "aws_request_id", None)
     # CORS preflight
     if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS" or event.get("httpMethod") == "OPTIONS":
         return create_response(200, {})
@@ -39,7 +46,23 @@ def lambda_handler(event, context):
         # 1) Validate URL
         err = validate_url(original_url)
         if err:
+            latency_ms = int((time.time() - start) * 1000)
+            log_json(
+                "WARN",
+                "shorten invalid url",
+                requestId=request_id,
+                statusCode=400,
+                latencyMs=latency_ms,
+                route=route,
+                method=method,
+                path=path,
+                userAgent=user_agent,
+                urlDomain=safe_domain(original_url),
+                hasProvidedTitle=bool(provided_title),
+                errorMessage=err,
+            )
             return create_response(400, {"error": err})
+        
 
         # 2) Title: prefer provided, else fetch
         title = provided_title
@@ -80,9 +103,37 @@ def lambda_handler(event, context):
                     continue
                 # other dynamodb error
                 print("DynamoDB error:", e)
+                latency_ms = int((time.time() - start) * 1000)
+                log_json(
+                    "ERROR",
+                    "shorten dynamodb error",
+                    requestId=request_id,
+                    statusCode=500,
+                    latencyMs=latency_ms,
+                    route=route,
+                    method=method,
+                    path=path,
+                    userAgent=user_agent,
+                    urlDomain=safe_domain(original_url),
+                    errorType=type(e).__name__,
+                    errorMessage=str(e),
+                )
                 return create_response(500, {"error": "Internal server error"})
 
         if not short_id:
+            latency_ms = int((time.time() - start) * 1000)
+            log_json(
+                "ERROR",
+                "shorten id generation failed",
+                requestId=request_id,
+                statusCode=500,
+                latencyMs=latency_ms,
+                route=route,
+                method=method,
+                path=path,
+                userAgent=user_agent,
+                urlDomain=safe_domain(original_url),
+            )
             return create_response(500, {"error": "Failed to generate unique shortId"})
 
         # 4) shortUrl
@@ -99,14 +150,61 @@ def lambda_handler(event, context):
             else:
                 short_url = f"/{short_id}"  # minimal fallback
 
-        return create_response(200, {"shortId": short_id, "shortUrl": short_url, "title": title,"originalUrl": original_url})
+        latency_ms = int((time.time() - start) * 1000)
+        log_json(
+            "INFO",
+            "shorten created",
+            requestId=request_id,
+            statusCode=200,
+            latencyMs=latency_ms,
+            route=route,
+            method=method,
+            path=path,
+            userAgent=user_agent,
+            createdShortId=short_id,
+            urlDomain=safe_domain(original_url),
+            hasProvidedTitle=bool(provided_title),
+        )
+
+        return create_response(200, {
+            "shortId": short_id,
+            "shortUrl": short_url,
+            "title": title,
+            "originalUrl": original_url
+        })
 
     except ValueError:
+        latency_ms = int((time.time() - start) * 1000)
+        log_json(
+            "WARN",
+            "shorten invalid json body",
+            requestId=request_id,
+            statusCode=400,
+            latencyMs=latency_ms,
+            route=route,
+            method=method,
+            path=path,
+            userAgent=user_agent,
+        )
         return create_response(400, {"error": "Invalid JSON body"})
+    
     except Exception as e:
         print("Unhandled error:", str(e))
+        latency_ms = int((time.time() - start) * 1000)
+        log_json(
+            "ERROR",
+            "shorten failed",
+            requestId=request_id,
+            statusCode=500,
+            latencyMs=latency_ms,
+            route=route,
+            method=method,
+            path=path,
+            userAgent=user_agent,
+            errorType=type(e).__name__,
+            errorMessage=str(e),
+        )
         return create_response(500, {"error": "Internal server error"})
-
 
 # ---------------- helpers ----------------
 
@@ -213,3 +311,51 @@ def create_response(status_code: int, body: dict):
         },
         "body": json.dumps(body, ensure_ascii=False),
     }
+
+def log_json(level, message, **kwargs):
+    log_obj = {
+        "level": level,
+        "message": message,
+        **kwargs,
+    }
+    print(json.dumps(log_obj, ensure_ascii=False))
+
+
+def extract_http_info(event):
+    method = None
+    route = None
+    path = None
+
+    # HTTP API (v2)
+    rc = event.get("requestContext", {}) or {}
+    http = rc.get("http", {}) or {}
+    if http:
+        method = http.get("method")
+        path = http.get("path")
+        route_key = event.get("routeKey")  # ex) "POST /shorten"
+        route = route_key if route_key and route_key != "$default" else path
+
+    # REST API (v1) fallback
+    if method is None:
+        method = event.get("httpMethod")
+    if path is None:
+        path = event.get("path")
+    if route is None:
+        route = event.get("resource") or path
+
+    return method, route, path
+
+
+def get_header(headers, key):
+    if not headers:
+        return None
+    return headers.get(key) or headers.get(key.lower()) or headers.get(key.title())
+
+
+def safe_domain(url: str | None) -> str | None:
+    if not url:
+        return None
+    try:
+        return (urlparse(url).hostname or "").lower() or None
+    except Exception:
+        return None
