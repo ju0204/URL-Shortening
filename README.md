@@ -238,3 +238,54 @@ url-shortener/
     ├── analyze/
     ├── alert_slack/
     └── alert_slack_ai/
+```
+---
+## 🚀 로컬실행방법
+
+### 1) Prerequisites
+- Terraform >= v1.5
+- AWS CLI
+- AWS 계정 
+- Python v3.11
+
+### 2) AWS 설정
+```text
+aws configure
+```
+
+### 3) Terraform 배포
+```text
+cd infra
+terraform init
+terraform apply
+```
+
+### 4) frontend 배포
+```text
+cd frontend
+npm install
+npm run dev
+```
+
+### 5) 환경변수
+
+#### Terraform(tfvars)
+```text
+slack_webhook_url = "slack 알림 받을 slack url"
+slack_webhook_url_ai_summary = "ai 요약 알림 받을 slack url"
+```
+
+#### Frontend (.env.local)
+```text
+NEXT_PUBLIC_API_GATEWAY_URL=https://api.shortify.cloud
+NEXT_PUBLIC_SENTRY_DSN=Sentry에서 발급되는 DSN
+```
+
+
+
+
+
+
+
+
+
