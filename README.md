@@ -24,7 +24,7 @@ AWS 서버리스 서비스(Lambda, API Gateway, DynamoDB)를 활용한 URL 단�
 | 프론트엔드/배포 | Next.js, Amazon CloudFront |
 | 도메인/보안 | Amazon Route 53, AWS Certificate Manager (ACM), AWS IAM |
 | 관측/모니터링 | Amazon CloudWatch, Grafana, AWS X-Ray, Sentry (Frontend) |
-| 알림 | Amazon SNS, Slack/Discord Webhook |
+| 알림 | Amazon SNS, Slack |
 | IaC/CI/CD | Terraform, GitHub Actions, Git/GitHub |
 | 개발/테스트 도구 | Python 3.11, VS Code, Postman, AWS CLI, cURL |
 
